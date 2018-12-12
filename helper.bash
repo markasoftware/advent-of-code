@@ -4,6 +4,7 @@ set -u
 # color stuff
 piss_color="\e[93m"
 green_color="\e[32m"
+orange_color="\e[91m"
 dark_grey_color="\e[90m"
 reset_color="\e[0m"
 
@@ -26,7 +27,7 @@ download_input() {
   until curl -fso "$4" -b "$3" --connect-timeout 5 "https://adventofcode.com/$1/day/$2/input"
   do
     echo 'Day not started yet. Hang tight!'
-    sleep 1
+    sleep 11
   done
   echo 'Day has begun.'
 }
@@ -41,7 +42,7 @@ vary_input() {
 # wrapper of GNU timeout for global config
 # @params program command line
 xtimeout() {
-  timeout 2 "$@"
+  timeout "$timeout_length" "$@"
   if (( $? > 0 ))
   then
     echo 'TIMEOUT'
@@ -83,22 +84,42 @@ run_perl() {
   done
 }
 
+run_rust() {
+  local script_dir=$1
+  shift
+  if ! [[ -d "$script_dir/solution-rs" ]]
+  then
+    echo 'No Rust folder found.'
+    return
+  fi
+  for i in "$@"
+  do
+    echo -e "${orange_color}Rust $i:${reset_color}"
+    pushd "$script_dir/solution-rs" > /dev/null
+    xtimeout cargo run < "$i"
+    popd > /dev/null
+  done
+}
+
 if (( $# < 2 ))
 then
   echo 'USAGE: helper 2018 24'
   exit 1
 fi
 
-tmp_dir="./tmp/$1-$2"
-script_dir="./solutions/$1-$2"
+timeout_length=${3:-4}
+
+tmp_dir="$PWD/tmp/$1-$2"
+script_dir="$PWD/solutions/$1-$2"
 mkdir -p "$tmp_dir"
 
 download_input "$1" "$2" ./cookies "$tmp_dir/input.raw"
-vary_input "$tmp_dir"
+# vary_input "$tmp_dir"
 while true
 do
   echo -e "${dark_grey_color}-----------------------------------${reset_color}"
   run_awk "$script_dir" "$tmp_dir"/input.*
   run_perl "$script_dir" "$tmp_dir"/input.*
+  run_rust "$script_dir" "$tmp_dir"/input.*
   sleep 1.5
 done
