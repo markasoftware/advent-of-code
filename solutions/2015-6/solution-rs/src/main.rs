@@ -6,6 +6,7 @@ use regex::Regex;
 fn main() {
   // coordinates were manually inspected to be <1000
   let mut grid = Grid::new();
+  let mut grid_part2 = Grid::new();
 
   // read all instructions
   // the .lock essentially gets a mutex so that other threads don't mess around while the buffer is being read?
@@ -13,29 +14,47 @@ fn main() {
   let stdin = std::io::stdin();
   let stdin_locked = stdin.lock();
   for line in stdin_locked.lines() {
-    let instruction = Instruction::from_line(&line.unwrap());
+    let instruction = Instruction::from_line(&line.unwrap()).unwrap();
     grid.execute(&instruction);
+    grid_part2.execute_part2(&instruction);
   }
   println!("{} lights are on.", grid.sum());
+  println!("Part2: {} lights are on.", grid_part2.sum());
 }
 
 struct Grid {
-  grid: [[bool; 1000]; 1000],
+  grid: Box<[[u32; 1000]; 1000]>,
 }
 
 impl Grid {
   fn new() -> Grid {
     Grid {
-      grid: [[false; 1000]; 1000],
+      grid: Box::new([[0; 1000]; 1000]),
     }
   }
 
   fn execute(&mut self, instruction: &Instruction) {
-    for row in instruction.start.x..instruction.end.x {
-      for col in instruction.start.y..instruction.end.y {
-        self.grid[row as usize][col as usize] = match instruction.action {
-          InstructionAction::Toggle => !self.grid[row as usize][col as usize],
-          InstructionAction::Set(b) => b,
+    // ranges are exclusive on the top for some godforsaken reason
+    for row in instruction.start.x..instruction.end.x + 1 {
+      for col in instruction.start.y..instruction.end.y + 1 {
+        let grid_val = &mut self.grid[row as usize][col as usize];
+        *grid_val = match instruction.action {
+          InstructionAction::Toggle => 1 - *grid_val,
+          InstructionAction::TurnOn => 1,
+          InstructionAction::TurnOff => 0,
+        }
+      }
+    }
+  }
+
+  fn execute_part2(&mut self, instruction: &Instruction) {
+    for row in instruction.start.x..instruction.end.x + 1 {
+      for col in instruction.start.y..instruction.end.y + 1 {
+        let grid_val = &mut self.grid[row as usize][col as usize];
+        *grid_val = match instruction.action {
+          InstructionAction::Toggle => *grid_val + 2,
+          InstructionAction::TurnOn => *grid_val + 1,
+          InstructionAction::TurnOff => if *grid_val == 0 { 0 } else { *grid_val - 1 },
         }
       }
     }
@@ -43,7 +62,7 @@ impl Grid {
 
   // sum is potentially up to 1,000,000
   fn sum(&self) -> u32 {
-    self.grid.iter().map(|row: &[bool; 1000]| -> u32 { row.iter().map(|x: &bool| -> u32 { (*x) as u32 }).sum() }).sum()
+    self.grid.iter().map(|row: &[u32; 1000]| -> u32 { row.iter().sum() }).sum()
   }
 }
 
@@ -53,7 +72,8 @@ struct Point {
 }
 
 enum InstructionAction {
-  Set(bool),
+  TurnOn,
+  TurnOff,
   Toggle,
 }
 
@@ -64,23 +84,22 @@ struct Instruction {
 }
 
 impl Instruction {
-  fn from_line(line: &str) -> Instruction {
+  fn from_line(line: &str) -> Option<Instruction> {
     // TODO: make this static. The `lazy-static` crate allows it to be defined as static lifetime and only initialized once.
     let re = Regex::new("(turn on|turn off|toggle) (\\d{1,3}),(\\d{1,3}) through (\\d{1,3}),(\\d{1,3})").unwrap();
-    let caps = re.captures(line).unwrap();
+    let caps = re.captures(line)?;
 
-    Instruction {
+    Some(Instruction {
       // OK to use teh indexing stuff because the strings from caps[n] cannot outlive re but we parse right away
-      // TODO: nice errors if they don't parse
-      start: Point { x: caps[2].parse().unwrap(), y: caps[3].parse().unwrap() },
-      end: Point { x: caps[4].parse().unwrap(), y: caps[5].parse().unwrap() },
+      start: Point { x: caps[2].parse()?, y: caps[3].parse()? },
+      end: Point { x: caps[4].parse()?, y: caps[5].parse()? },
       // TODO: use FromStr so that we can use caps[1].parse()
       action: match &caps[1] {
-        "turn on" => InstructionAction::Set(true),
-        "turn off" => InstructionAction::Set(false),
+        "turn on" => InstructionAction::TurnOn,
+        "turn off" => InstructionAction::TurnOff,
         "toggle" => InstructionAction::Toggle,
         _ => panic!("Impossible first capture group"),
       },
-    }
+    })
   }
 }
